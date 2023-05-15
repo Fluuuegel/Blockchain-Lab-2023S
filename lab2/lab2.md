@@ -34,7 +34,7 @@ type Blockchain struct {
 
 本实验中，我们定义了一个简化的区块结构，其包括区块头和区块体。其中块头用于唯一标识区块，包含版本号、上一个区块哈希值、当前区块交易哈希值、Merkle根、时间戳、难度值和Nonce随机数等信息。区块体则存储具体的数据内容。
 
-```
+```go
 type Block struct {
 	Header *BlkHeader
 	Body   *BlkBody

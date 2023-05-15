@@ -35,8 +35,11 @@ func NewUTXOTransaction(from, to []byte, amount int, UTXOSet *UTXOSet) *Transact
 	return nil
 }
 
-func (t *Transaction) IsCoinBase() bool {
-	return true
+func (t *Transaction) IsCoinBase() bool { // coinbase 交易判断
+    if len(t.Vin) != 1 || (len(t.Vin[0].Txid) > 0) || (t.Vin[0].Vout != -1) {
+        return false
+    }
+    return true
 }
 
 func (t *Transaction) Serialize() []byte {

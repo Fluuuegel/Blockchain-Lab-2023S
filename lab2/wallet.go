@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"math/big"
 
 	"golang.org/x/crypto/ripemd160"
 )
@@ -82,14 +83,16 @@ func (ws *Wallets) CreateWallet() string {
 }
 
 // GetAddresses returns an array of addresses stored in the wallet file
-func (ws *Wallets) GetAddresses() []string {
-	var addresses []string
-
-	for address := range ws.Wallets {
-		addresses = append(addresses, address)
-	}
-
-	return addresses
+func (w *Wallet) GetAddresses() []byte {
+	pubKeyHash := HashPublicKey(w.PublicKey)
+	versionedPayload := append([]byte{version}, pubKeyHash...)
+	first := sha256.Sum256(versionedPayload)
+	second := sha256.Sum256(first[:])
+	checkSum := [checkSumlen]byte{}
+	copy(checkSum[:], second[:checkSumlen])
+	fullPayload := append(versionedPayload, checkSum[:]...)
+	address := base58Encode(fullPayload)
+	return []byte(address)
 }
 
 // GetWallet returns a Wallet by its address
@@ -119,6 +122,63 @@ func (ws *Wallets) LoadFromFile() error {
 	ws.Wallets = wallets.Wallets
 
 	return nil
+}
+
+// https://github.com/btcsuite/btcd/blob/master/btcutil/base58/base58.go
+func base58Encode(b []byte) string {
+	var bigRadix10 = big.NewInt(58 * 58 * 58 * 58 * 58 * 58 * 58 * 58 * 58 * 58) // 58^10
+	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	const alphabetIdx0 = '1'
+
+	x := new(big.Int)
+	x.SetBytes(b)
+
+	// maximum length of output is log58(2^(8*len(b))) == len(b) * 8 / log(58)
+	maxlen := int(float64(len(b))*1.365658237309761) + 1
+	answer := make([]byte, 0, maxlen)
+	mod := new(big.Int)
+	for x.Sign() > 0 {
+		// Calculating with big.Int is slow for each iteration.
+		//    x, mod = x / 58, x % 58
+		//
+		// Instead we can try to do as much calculations on int64.
+		//    x, mod = x / 58^10, x % 58^10
+		//
+		// Which will give us mod, which is 10 digit base58 number.
+		// We'll loop that 10 times to convert to the answer.
+
+		x.DivMod(x, bigRadix10, mod)
+		if x.Sign() == 0 {
+			// When x = 0, we need to ensure we don't add any extra zeros.
+			m := mod.Int64()
+			for m > 0 {
+				answer = append(answer, alphabet[m%58])
+				m /= 58
+			}
+		} else {
+			m := mod.Int64()
+			for i := 0; i < 10; i++ {
+				answer = append(answer, alphabet[m%58])
+				m /= 58
+			}
+		}
+	}
+
+	// leading zero bytes
+	for _, i := range b {
+		if i != 0 {
+			break
+		}
+		answer = append(answer, alphabetIdx0)
+	}
+
+	// reverse
+	alen := len(answer)
+	for i := 0; i < alen/2; i++ {
+		answer[i], answer[alen-1-i] = answer[alen-1-i], answer[i]
+	}
+
+	return string(answer)
 }
 
 // SaveToFile saves wallets to a file
